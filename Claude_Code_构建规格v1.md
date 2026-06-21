@@ -1,20 +1,24 @@
-# VC 一级市场项目雷达 · Claude Code 构建规格 v6（权威版 / 自包含）
+# VC 监控agent · 构建规格 v1（权威版 / 自包含）
 
-> 给 **Claude Code** 的唯一实现规格。在 v5 基础上升级，**严格按第 15 节顺序实现、满足第 16 节验收**。
-> 同目录：`weekly_template.xlsx`（周报模板）、历史周报 `*.docx`（Word 参考）。
-> 本文件取代 v1–v5。
+> 给 **Claude Code** 的唯一实现规格。**严格按第 15 节顺序实现、满足第 16 节验收**。
+> 同目录：`templates/weekly_template.xlsx`（周报模板，11 列含业务简介）。
+> 本文件为 v1 当前架构权威规格，与 `docs/ARCHITECTURE.md` 互补。
 
-## v6 相对 v5 的核心改动
+## v1 核心特性
 
-| 改动 | 说明 |
+| 特性 | 说明 |
 |---|---|
-| ★ **明确检索轮次** | 4 个阶段：第一轮（并行捕获）→ 时间核查+去重 → 第二轮（项目信息核实/补全）→ 数量检查（<20 强制再来一轮） |
-| ★ **浏览器做关键词搜索** | Crawl4AI+Playwright 在 Bing CN / Bing EN 上做真实关键词搜索，返回搜索结果链接与摘要，不定向爬固定站点 |
-| ★ **<20 强制补搜** | 所有轮次结束后如果进入周报的项目 <20 个，强制触发一次扩展关键词的完整补搜，直到 ≥20 或达最大重试次数 |
-| ★ **赛道感知关键词** | 5 大赛道分别有专属搜索词集，CN+EN 双语分开，覆盖 AI/具身/ai4S/前沿科技等重点赛道 |
-| ★ **CN+海外双路指标** | 分别统计国内/海外项目数，不足时分别触发定向补搜，解决"只有国内/只有海外"问题 |
+| ★ **四阶段闭环** | ROUND-1（五路并行采集）→ STAGE-2（预过滤+去重+LLM抽取+时间核查）→ ROUND-2（信息补全）→ STAGE-3（数量检查+补搜） |
+| ★ **五路并行采集** | RSS + 微信公众号(wewe-rss JWT) + Kimi联网搜索 + 浏览器Bing搜索 + 手动链接 |
+| ★ **wewe-rss JWT 认证** | Bearer token 登录 `/api/v1/wx/auth/login`，4级降级：JWT API → 无认证 → RSS列表 → 容器SQLite直读 |
+| ★ **时间预过滤** | ROUND-1 末尾按窗口剔除旧文，减少后续无效 LLM 调用 |
+| ★ **业务简介字段** | Deal 模型含 `business`，Excel 11 列含"业务简介" |
+| ★ **赛道感知关键词** | 5 大赛道分别有专属搜索词集，CN+EN 双语分开 |
+| ★ **<20 强制补搜** | 总数<20/国内<5/海外<5 分别触发定向补搜，最多1次 |
+| ★ **5 路定向补全** | ROUND-2 每项目 5 路搜索：融资细节/团队/投资方/业务/英文备选 |
+| ★ **预检脚本** | `preflight.py` 检查 wewe-rss 容器+微信登录+搜索API+LLM+窗口文章数 |
 
-其余（赛道/Tag 定义、字段映射、Word 精确结构、SQLite+双Excel 存储归档、反向核查逻辑、金额量级规则、预留端口）与 v5 保持一致，下文给出要点，Claude Code 按 v5 相应模块实现即可。
+其余（赛道/Tag 定义、Word 精确结构、SQLite+双Excel 存储归档、金额量级规则、预留端口）与现有实现一致。
 
 ---
 
@@ -59,7 +63,7 @@
 ## 2. 赛道与 Tag
 
 ```python
-# config/taxonomy.py（与 v4/v5 完全一致）
+# config/taxonomy.py（与 v4/v1 完全一致）
 TRACK_TAGS = {
     "AI2C":  ["内容创作GenAI","AI陪伴社交","AI硬件终端","健康运动","生活服务","效率与教育"],
     "AI2B":  ["AI Agent","金融科技","数据与BI","知识管理","安全合规","行业优化"],
@@ -73,7 +77,7 @@ ALLOWED = {t:set(v) for t,v in TRACK_TAGS.items()}
 
 ---
 
-## 3. 字段映射（与 v4/v5 一致）
+## 3. 字段映射（v1：11 列，含业务简介）
 
 | Excel 列 | Deal 字段 | Word 对应 |
 |---|---|---|
@@ -83,12 +87,13 @@ ALLOWED = {t:set(v) for t,v in TRACK_TAGS.items()}
 | **标题** | **`title`** | **整条粗体标题，含金额或量级** |
 | 团队 | `team` | 创始人段 |
 | 轮次 | `round` | 融资详情 |
-| 最新估值 | `valuation` | 融资详情 |
+| 融资金额 | `amount` | 融资详情 |
 | 投资方 | `investors` | 融资详情 |
+| **业务简介** | **`business`** | **一句话业务（v1 新增）** |
 | 地区 | `region` | 正文 |
 | 具体信息 | `detail` | 痛点→方案→商业模式 正文 |
 
-仅入 SQLite/总库/看板的附加字段：`amount, region_class, verified_date, date_status, date_confidence, sources, first_seen_window`。
+仅入 SQLite/总库/看板的附加字段：`valuation, region_class, verified_date, date_status, date_confidence, sources, first_seen_window`。
 
 ---
 
@@ -115,7 +120,7 @@ AI 创业资讯 {起.月.日} — {止.月.日}          ← heading 0
 
 ---
 
-## 5. LLM 层（与 v5 一致，关键点）
+## 5. LLM 层（与 v1 一致，关键点）
 
 ```python
 # llm/client.py
@@ -129,49 +134,54 @@ TASK_MODEL = {
 }
 ```
 
-`kimi_web_search(query)` 函数（第一轮主力）：通过 Kimi `$web_search` builtin，关思考模式（`extra_body={"thinking":{"type":"disabled"}}`），tool_calls 循环到 finish\_reason≠tool\_calls，返回 `[{title,url,snippet,date}]`，约 ¥0.03/次。（实现见 v5 第 10.2 节）
+`kimi_web_search(query)` 函数（第一轮主力）：通过 Kimi `$web_search` builtin，关思考模式（`extra_body={"thinking":{"type":"disabled"}}`），tool_calls 循环到 finish\_reason≠tool\_calls，返回 `[{title,url,snippet,date}]`，约 ¥0.03/次。（实现见 v1 第 10.2 节）
 
 ---
 
-## 6. 架构总图（v6 四阶段）
+## 6. 架构总图（v1 四阶段）
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ 第一轮 ROUND-1（并行，同时启动，结果合并）                             │
-│  A. Kimi $web_search      CN关键词×N + EN关键词×N                    │
-│  B. 浏览器关键词搜索       Bing-CN × CN词 + Bing-EN × EN词（Playwright）│
-│  C. 微信RSS(wewe-rss)      全量拉，时间窗过滤                          │
-│  D. RSSHub(中) + 海外RSS   全量拉，时间窗过滤                          │
+│ 第一轮 ROUND-1（五路并行，同时启动，结果合并）                          │
+│  A. RSSHub(中) + 海外RSS   全量拉，时间窗过滤                          │
+│  B. 微信公众号(wewe-rss)   JWT 认证 → 逐号分页采集 → 时间窗过滤         │
+│  C. Kimi 联网搜索           CN关键词×N + EN关键词×N（赛道感知）         │
+│  D. 浏览器Bing搜索          Bing-CN × CN词 + Bing-EN × EN词（Playwright）│
+│  E. 手动链接                逐 URL 抓取                                 │
+│                  ↓ 合并 → 时间预过滤（窗口外旧文剔除）                  │
 └──────────────────────────┬───────────────────────────────────────────┘
-                           ▼ 合并 → 关键词预过滤门 → 指纹去重 → 并发抽取(DeepSeek)→ 跨源合并
+                           ▼ 关键词预过滤门 → 指纹去重 → 回源补全文
+                           ▼ 并发 LLM 抽取(DeepSeek-V4-Flash × 6) → 跨源合并
 ┌──────────────────────────────────────────────────────────────────────┐
-│ 时间核查阶段 STAGE-2（选择性 date_verify：反查真实公布日，stale 剔出）   │
+│ 时间核查 STAGE-2（date_verify：RSS/wechat 用 source_date 直接判断；    │
+│                   search/web/manual 调 Kimi 反查融资公布日，stale 剔出）│
 └──────────────────────────┬───────────────────────────────────────────┘
                            ▼ in_window 项目
 ┌──────────────────────────────────────────────────────────────────────┐
-│ 第二轮 ROUND-2（对已确认项目定向补全信息）                             │
-│  对每个 Deal：搜"项目名+轮次"，用 Tavily/Exa/博查 补齐                 │
-│  amount / valuation / investors / team / official_site 缺失项         │
+│ 第二轮 ROUND-2（v1：5 路定向搜索补全）                                  │
+│  每项目 5 路搜索：融资细节/团队背景/投资方/业务产品/英文备选             │
+│  补齐 amount / valuation / investors / team / business / official_site │
+│  Bocha/Exa 优先，Web Fetch 兜底                                        │
 └──────────────────────────┬───────────────────────────────────────────┘
                            ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │ 数量检查 STAGE-3（COUNT CHECK）                                        │
 │  统计 in_window 总数 / CN 数 / 海外数                                  │
-│  总数 <20 → 触发 ROUND-3（扩展词+全部搜索源，最多1次）                  │
+│  总数 <20 → 触发 ROUND-3（Kimi+浏览器Bing+Bocha/Exa 补搜，最多1次）    │
 │  CN <5   → 额外跑 CN 定向补搜                                          │
 │  海外 <5 → 额外跑 EN 定向补搜                                          │
 └──────────────────────────┬───────────────────────────────────────────┘
                            ▼ 最终 in_window 项目列表
-           SQLite upsert → 周报Excel + 周报Word + 总库Excel → 桌面归档
+           SQLite upsert (26列) → 周报Excel (11列) + 周报Word + 总库Excel → 桌面归档
                         └─► Streamlit 看板 + [预留] Notion/飞书/邮箱
 ```
 
 ---
 
-## 7. 赛道感知关键词集（v6 核心，赛道分组+中英双语）
+## 7. 赛道感知关键词集（v1 核心，赛道分组+中英双语）
 
 ```python
-# config/sources.py  关键词部分（新增，替换 v5 的通用词列表）
+# config/sources.py  关键词部分（新增，替换 v1 的通用词列表）
 
 # ── 按赛道分组，搜索时全部合并使用 ──────────────────────────────────────
 TRACK_QUERIES_CN = {
@@ -204,13 +214,13 @@ RETRY_QUERIES_CN = ["AI 初创 融资 2026","机器人 融资 早期","硬科技
 RETRY_QUERIES_EN = ["AI startup raised funding 2026","tech startup seed round",
                     "early stage funding AI robotics chip"]
 
-# RSS（与 v5 一致）
+# RSS（v1：投资界/机器之心 RSSHub 路由不存在已移除；微信公众号改用 werss_collector JWT 采集）
 import os
 RSS_FEEDS_CN = {
-    "36氪":"http://localhost:1200/36kr/news/latest","投资界":"http://localhost:1200/pedaily/news",
-    "创业邦":"http://localhost:1200/cyzone/news","机器之心":"http://localhost:1200/jiqizhixin/information",
+    "36氪":"http://localhost:1200/36kr/news/latest",
+    "创业邦":"http://localhost:1200/cyzone/news",
     "量子位":"http://localhost:1200/qbitai/category/资讯",
-    "微信公众号": os.getenv("WEWE_RSS_FEED","http://localhost:8001/feed/all.atom?title_include=融资|轮|天使|种子"),
+    # 微信公众号改用 collectors/werss_collector.py（JWT 认证 → 逐号分页采集 → 时间窗过滤）
 }
 RSS_FEEDS_GLOBAL = {
     "TechCrunch":"https://techcrunch.com/feed/",
@@ -225,42 +235,58 @@ MANUAL_LINKS_FILE = "data/manual_links.txt"
 
 ---
 
-## 8. 目录结构（v6 新增文件）
+## 8. 目录结构（v1 当前）
 
 ```
-vc-radar/
+VC agent/
 ├── config/{taxonomy.py, sources.py, settings.py}
 ├── models/schema.py
-├── llm/client.py                            # chat() + kimi_web_search()
+├── llm/client.py                            # 多 Provider 统一 LLM 客户端
 ├── collectors/
-│   ├── rss_collector.py                     # RSS 中外分流
-│   ├── browser_search.py                    # ★新：浏览器关键词搜索(Bing)
-│   ├── search_collector.py                  # Tavily+Exa+博查（第二轮/补搜用）
-│   ├── manual.py; xhs_collector.py(桩)
+│   ├── werss_collector.py                   # ★ 微信公众号（JWT + 逐号分页 + SQLite 降级）
+│   ├── rss_collector.py                     # RSSHub(中) + 海外 RSS 直连
+│   ├── kimi_collector.py                    # Kimi 联网搜索（赛道关键词）
+│   ├── kimi_search_collector.py             # Kimi 单项目反查
+│   ├── browser_search.py                    # 浏览器 Bing CN+EN 关键词搜索
+│   ├── search_collector.py                  # Bocha/Exa/Tavily API 搜索
+│   ├── web_collector.py                     # URL 抓取 + 全文回源
+│   ├── manual.py                            # 手动链接读取
+│   └── xhs_collector.py                     # 小红书（桩）
 ├── processors/
-│   ├── window.py; dedup.py; pregate.py
-│   ├── extractor.py; merge.py
-│   ├── date_verify.py                       # 反查真实公布日
-│   ├── enricher.py                          # ★新：第二轮信息补全
-│   └── coverage_check.py                    # ★新：数量/中外检查+补搜决策
+│   ├── pregate.py                           # 关键词预过滤门
+│   ├── dedup.py                             # 指纹去重
+│   ├── extractor.py                         # LLM 并发抽取（Deal 结构化）
+│   ├── merge.py                             # 跨源合并
+│   ├── date_verify.py                       # 时间核查（Kimi 反查）
+│   ├── enricher.py                          # ROUND-2 信息补全（5 路搜索）
+│   ├── coverage_check.py                    # 数量检查 + 补搜决策
+│   └── window.py                            # 时间窗口管理
+├── exporters/{excel_exporter.py, word_exporter.py, master_exporter.py, summary.py}
 ├── storage/{db.py, paths.py, notion_sink.py, feishu_sink.py, email_sink.py}
-├── exporters/{excel_exporter.py, master_exporter.py, word_exporter.py, summary.py}
-├── templates/weekly_template.xlsx
-├── data/{vc.sqlite, state.json, manual_links.txt, raw/, run.log}
+├── templates/weekly_template.xlsx           # 周报模板（11 列）
+├── data/{vc.sqlite, state.json, manual_links.txt}
+├── docs/ARCHITECTURE.md                     # 系统架构文档
+├── preflight.py                             # ★ 预检脚本（服务+API+数据检查）
 ├── dashboard.py  main.py  scheduler.py
 └── scripts/{setup_env.py, check_env.py}
 ```
 
 ---
 
-## 9. ★第一轮：四路并行采集
+## 9. ★第一轮：五路并行采集（v1 增强）
 
-### 9.1 RSS（微信 + RSSHub）—— 同 v5
+### 9.1 RSS（RSSHub 中 + 海外直连）+ 微信公众号（wewe-rss JWT）
 
 ```python
-# collectors/rss_collector.py（与 v5 相同，略）
+# collectors/rss_collector.py — RSSHub(中) + 海外 RSS 直连，时间窗过滤
 def collect_rss(start, end): ...
-# 返回 list[Article]，微信来的标 source_type="wechat"、region_hint="国内"
+
+# collectors/werss_collector.py — 微信公众号（★ v1：JWT 认证 + 逐号分页）
+# 1. POST /api/v1/wx/auth/login → Bearer token（缓存 1h）
+# 2. GET /api/v1/wx/mps → 活跃公众号列表
+# 3. 逐号 GET /feed/{id}.xml?limit=100&offset=N → 按窗口时间戳过滤
+# 4. 4 级降级：JWT API → 无认证 API → RSS 列表 → 容器 SQLite 直读
+def collect_werss(start, end): ...
 ```
 
 ### 9.2 ★浏览器关键词搜索（R25，新模块）
@@ -325,7 +351,7 @@ def browser_keyword_search(cn_queries, en_queries, max_cn=None, max_en=None):
 
 > 若 Playwright 未安装，`AsyncWebCrawler` 自动降级到 requests+bs4，部分结果变少但不阻断主流程。
 
-### 9.3 Kimi 联网搜索 —— 同 v5 `llm/client.py::kimi_web_search()`
+### 9.3 Kimi 联网搜索 —— 同 v1 `llm/client.py::kimi_web_search()`
 
 把 Kimi 联网结果转 Article：
 
@@ -346,7 +372,7 @@ def collect_kimi():
     return out
 ```
 
-### 9.4 第一轮并行编排
+### 9.4 第一轮并行编排（v1：五路并行 + 时间预过滤）
 
 ```python
 # 在 main.py 的 stage1_capture() 里
@@ -354,20 +380,35 @@ from concurrent.futures import ThreadPoolExecutor
 from config.sources import all_cn_queries, all_en_queries
 
 def stage1_capture(start, end):
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    """五路并行采集：RSS + 微信公众号 + Kimi + 浏览器Bing + 手动链接。"""
+    arts = []
+    with ThreadPoolExecutor(max_workers=5) as ex:
         f_rss   = ex.submit(rss_collector.collect_rss, start, end)
+        f_werss = ex.submit(werss_collector.collect_werss, start, end)
         f_kimi  = ex.submit(kimi_collector.collect_kimi)
         f_brow  = ex.submit(browser_search.browser_keyword_search,
                             all_cn_queries(), all_en_queries())
         f_manual= ex.submit(lambda: web_collector.crawl_urls(manual.read_manual_links()))
-    arts = f_rss.result() + f_kimi.result() + f_brow.result() + f_manual.result()
+        arts.extend(f_rss.result())
+        arts.extend(f_werss.result())
+        arts.extend(f_kimi.result())
+        arts.extend(f_brow.result())
+        arts.extend(f_manual.result())
     arts += collect_xhs()                   # 桩，默认 []
-    return arts
+
+    # ★ v1：时间预过滤 — 只保留窗口内的文章
+    in_window_arts = []
+    for a in arts:
+        if a.published_at is None:
+            in_window_arts.append(a)        # 无日期的保留（搜索源）
+        elif start <= a.published_at <= end:
+            in_window_arts.append(a)
+    return in_window_arts
 ```
 
 ---
 
-## 10. 时间核查阶段（Stage 2）
+## 10. 时间核查阶段（Stage 2）— v1 增强
 
 ```python
 # 在 main.py 的 stage2_verify() 里
@@ -377,46 +418,61 @@ def stage2_verify(arts, start, end):
     web_collector.enrich_fulltext(arts)     # 选择性回源补全文（搜索来的短内容）
     deals = merge.merge(extractor.extract_all(arts))  # 并发抽取
     for d in deals:
-        date_verify.verify(d, start, end)   # 反查真实公布日（选择性，risky源）
+        date_verify.verify(d, start, end)   # ★ v1：全部源都做时间核查
     return deals
 ```
 
-核查结果标 `date_status`：
-- `in_window` → 进周报
-- `stale`（真实公布日早于本周窗口）→ 入总库但不进周报
-- `unknown` → 不误杀，保留
+核查策略（v1）：
+- **RSS/wechat 源**：用 `source_date` 直接窗口判断（高置信度），不再盲目信任
+- **search/web/manual 源**：调 Kimi 联网反查融资公布日
+- 核查结果标 `date_status`：`in_window` → 进周报；`stale` → 入总库但不进周报；`unknown` → 不误杀，保留
 
 ---
 
-## 11. ★第二轮：项目信息核实与补全（Round 2）
+## 11. ★第二轮：项目信息核实与补全（Round 2）— v1 增强
 
-> 第一轮捕获的是"有什么项目"，第二轮是"把这些项目的信息填完整"。对每个 in\_window 项目，针对性地补 amount/valuation/investors/team/official\_site 缺失字段。
+> 第一轮捕获的是"有什么项目"，第二轮是"把这些项目的信息填完整"。
+> v1 增强：5 路定向搜索 + Web Fetch 兜底，补全 business（业务简介）等新增字段。
 
 ```python
-# processors/enricher.py
+# processors/enricher.py（v1：5 路定向搜索 + business 字段）
 import json
 from llm.client import chat
-from collectors.search_collector import search_all   # Tavily+Exa+博查
+from collectors.search_collector import search_all   # Bocha/Exa 优先
 
 ENRICH_SYS = """你是 VC 投研数据核实员。给定一个融资项目的已知信息和搜索摘要，
 补充缺失字段。只输出 JSON，字段：
-amount(融资金额，精确>量级>未披露), valuation(估值，同上),
-investors(领投·跟投，有才填), team(创始人姓名+背景), official_site(官网URL，有才填)。
+amount(融资金额，精确>量级>未披露),
+valuation(估值，同上),
+investors(投资方，格式：领投·XX，跟投·YY；有才填),
+team(创始人姓名+学历/前东家+核心履历),
+business(一句话业务：做什么产品/服务，解决什么痛点),
+official_site(官网URL，有才填)。
 不确定的量级举例：数百万元/数千万元/亿元级/数百万美元/数千万美元/数亿美元。绝不编造。"""
 
 def enrich_deal(d):
-    """对单个 Deal 补全缺失字段，调一次搜索+一次LLM"""
-    missing = [f for f in ("amount","valuation","investors","team","official_site")
+    """v1：对单个 Deal 做 5 路定向搜索 + Web Fetch 兜底"""
+    missing = [f for f in ("amount","valuation","investors","team","business","official_site")
                if not getattr(d, f) or getattr(d, f) in ("","未披露")]
-    if not missing: return d                # 字段完整，跳过
-    qs = [f'"{d.project_name}" {d.round} 融资', f'"{d.project_name}" funding investors']
-    arts = search_all(qs)[:5]
-    snip = "\n\n".join(f"[{a.source}] {a.title}\n{a.content[:400]}" for a in arts)
-    if not snip: return d
+    if not missing: return d
+    # 5 路定向搜索：融资细节 / 团队 / 投资方 / 业务产品 / 英文备选
+    qs = [
+        f'"{d.project_name}" {d.round} 融资金额 估值',
+        f'"{d.project_name}" 创始人 团队 背景',
+        f'"{d.project_name}" 投资方 领投 跟投',
+        f'"{d.project_name}" 产品 业务 商业模式',
+        f'"{d.project_name}" funding round investors' if d.region_class == "海外" else None,
+    ]
+    qs = [q for q in qs if q]
+    arts = []
+    for q in qs:
+        arts.extend(search_all([q])[:3])
+    snip = "\n\n".join(f"[{a.source}] {a.title}\n{a.content[:400]}" for a in arts[:12])
+    if not snip: return d  # Web Fetch 兜底由调用方处理
     known = f"项目：{d.project_name} | 轮次：{d.round} | 已知：amount={d.amount}, investors={d.investors}"
     try:
         j = json.loads(chat("enrich", ENRICH_SYS,
-            f"{known}\n缺失字段：{missing}\n\n搜索摘要：\n{snip}", max_tokens=400, json_mode=True))
+            f"{known}\n缺失字段：{missing}\n\n搜索摘要：\n{snip}", max_tokens=500, json_mode=True))
     except Exception: return d
     for f in missing:
         val = j.get(f,"")
@@ -474,13 +530,13 @@ def build_retry_queries(deals):
 
 ---
 
-## 13. 数据存储与归档（沿用 v5 第 13 节）
+## 13. 数据存储与归档（沿用 v1 第 13 节）
 
-三层：**SQLite**（唯一真源）→ **总库 Excel**（全字段，全量重建，原子写+快照）→ **周报 Excel+Word**（仅本窗口 in\_window 项目，剔 stale，按年/月归档，文件名含日期区间）。`FLAT_MODE=true` 时平铺，命名铁律 `YYYY-MM-DD` 零填充+类型前缀。`storage/paths.py` 实现同 v5。
+三层：**SQLite**（唯一真源）→ **总库 Excel**（全字段，全量重建，原子写+快照）→ **周报 Excel+Word**（仅本窗口 in\_window 项目，剔 stale，按年/月归档，文件名含日期区间）。`FLAT_MODE=true` 时平铺，命名铁律 `YYYY-MM-DD` 零填充+类型前缀。`storage/paths.py` 实现同 v1。
 
 ---
 
-## 14. 省 token 策略（沿用 v5 第 12 节 + 新增）
+## 14. 省 token 策略（沿用 v1 第 12 节 + 新增）
 
 | 优化点 | 做法 |
 |---|---|
@@ -496,7 +552,7 @@ def build_retry_queries(deals):
 
 ---
 
-## 15. 主流程编排（v6 完整版）
+## 15. 主流程编排（v1 完整版）
 
 ```python
 # main.py
@@ -694,7 +750,7 @@ s.start()
 
 ---
 
-## 19. .env 模板（v6，含新增旋钮）
+## 19. .env 模板（v1，含新增旋钮）
 
 ```bash
 DEEPSEEK_API_KEY=
@@ -703,7 +759,7 @@ MOONSHOT_BASE_URL=https://api.moonshot.cn/v1
 BOCHA_API_KEY=
 EXA_API_KEY=
 TAVILY_API_KEY=
-WEWE_RSS_FEED=http://localhost:8001/feed/all.atom?title_include=融资|轮|天使|种子
+# WEWE_RSS_FEED=http://localhost:8001/feed/all.atom?title_include=融资|轮|天使|种子  # v1：werss_collector 改用 JWT API 直连，不再走 RSS feed
 # ── 检索轮次旋钮 ──
 MIN_DEALS_TOTAL=20              # 低于此数触发补搜
 MIN_DEALS_CN=5                  # 国内项目最低数
@@ -742,4 +798,10 @@ ENABLE_EMAIL=false
 
 ## 20. 给 Claude Code 的启动指令
 
-> "读 `Claude_Code_构建规格v6.md`，在现有代码基础上按第 15 节顺序升级，满足第 16 节全部验收。**必须实现的三处新增**：①`collectors/browser_search.py`（Crawl4AI+Playwright 在 Bing CN/EN 上做关键词搜索，不爬固定站点）；②`processors/enricher.py`（对 in_window 项目定向补全 amount/investors/team 等缺失字段）；③`processors/coverage_check.py`（统计 in_window 总数/国内/海外，< 阈值时返回补搜词并在 main.py 的 stage3_coverage() 里执行补搜，最多1次）。同时把 `collectors/kimi_collector.py` 拆出并加 `collect_kimi_with_queries(qs)` 方法供补搜复用。`main.py` 按第 15 节四阶段重组：stage1\_capture → stage2\_verify → round2\_enrich → stage3\_coverage。每步执行前后打 logger 分段日志。完成后 `--dry-run` 自检验收 A1–A14，重点看日志中的阶段分段、中外分布、是否触发补搜。"
+> "读 `Claude_Code_构建规格v1.md` 和 `docs/ARCHITECTURE.md`，了解 v1 当前架构。项目名 **VC 监控agent**，四阶段流水线（ROUND-1 五路并行采集 → STAGE-2 预过滤去重抽取核查 → ROUND-2 五路定向补全 → STAGE-3 数量检查补搜）。
+> 
+> **v1 关键模块**：①`collectors/werss_collector.py`（JWT 认证 + 4级降级）；②`collectors/browser_search.py`（Bing CN/EN 关键词搜索）；③`processors/enricher.py`（5 路定向搜索补全）；④`processors/coverage_check.py`（数量检查+补搜决策）；⑤`preflight.py`（预检脚本）。
+> 
+> 预检：`python preflight.py --since YYYY-MM-DD --until YYYY-MM-DD`
+> 运行：`python main.py --dry-run` 预览 → `python main.py` 完整输出。
+> 验收 A1–A14：阶段分段日志、中外分布、stale 剔除、补搜触发、Excel 11 列、business 字段。"
