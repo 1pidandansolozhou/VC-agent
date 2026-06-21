@@ -1,7 +1,7 @@
 """
-★ v7 增强：第二轮项目信息核实与补全（Round 2）。
+★ v1 增强：第二轮项目信息核实与补全（Round 2）。
 
-v7 改进：
+v1 改进：
 - 5 路定向搜索：融资细节 / 团队 / 投资方 / 业务产品 / 英文备选
 - Web Fetch 兜底：搜索失败时直接抓取项目 URL 原文
 - 更丰富的 LLM 提示词：业务痛点、核心产品、对标竞品
@@ -184,7 +184,7 @@ def enrich_all(deals: List[Deal], workers: int = 3) -> List[Deal]:
     if not in_w:
         return deals
 
-    logger.info(f"[ROUND-2] 对 {len(in_w)} 个确认项目补全信息（v7 增强搜索）")
+    logger.info(f"[ROUND-2] 对 {len(in_w)} 个确认项目补全信息（v1 增强搜索）")
     enriched = []
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {ex.submit(enrich_deal, d): d for d in in_w}

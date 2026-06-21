@@ -1,4 +1,4 @@
-# v6 处理模块
+# v1 处理模块
 from . import pregate        # ★ 新增
 from . import dedup
 from . import extractor

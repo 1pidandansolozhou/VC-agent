@@ -22,7 +22,7 @@ RSS_FEEDS_GLOBAL = {
 
 RSS_FEEDS = {**RSS_FEEDS_CN, **RSS_FEEDS_GLOBAL}
 
-# ========== ★ v6 — 赛道感知关键词集（中英双语）==========
+# ========== ★ v1 — 赛道感知关键词集（中英双语）==========
 # 用于第一轮 Kimi 联网搜索和浏览器 Bing 搜索
 TRACK_QUERIES_CN = {
     "通用":   ["本周 完成 天使轮 融资", "完成 Pre-A 轮 融资", "完成 种子轮 融资 AI", "完成 A轮 融资"],
@@ -70,7 +70,7 @@ def all_en_queries():
     return out
 
 
-# ========== 补搜用更宽的词（v6）==========
+# ========== 补搜用更宽的词（v1）==========
 RETRY_QUERIES_CN = ["AI 初创 融资 2026", "机器人 融资 早期", "硬科技 天使轮 融资", "前沿技术 种子轮"]
 RETRY_QUERIES_EN = ["AI startup raised funding 2026", "tech startup seed round",
                     "early stage funding AI robotics chip"]

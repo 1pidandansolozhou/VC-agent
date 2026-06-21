@@ -1,4 +1,4 @@
-# VC 监控agent 系统架构文档 v7
+# VC 监控agent 系统架构文档 v1
 
 > 最后更新：2026-06-21  
 > 项目定位：基于 LLM 的 AI 一级市场融资雷达，自动抓取海内外早期融资信息，输出周报
@@ -192,7 +192,7 @@ VC 监控agent 是一个四阶段流水线系统，自动完成"信息采集 →
 | amount | str | 融资金额（精确值或量级） |
 | valuation | str? | 估值 |
 | investors | str | 投资方 |
-| business | str | 一句话业务描述（v7 新增） |
+| business | str | 一句话业务描述（v1 新增） |
 | region | str | 省/市 或 国家 |
 | region_class | Literal | 国内 / 海外 / 未知 |
 | detail | str | 150-300字详细描述 |

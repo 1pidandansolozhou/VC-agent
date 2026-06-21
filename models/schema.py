@@ -28,7 +28,7 @@ class Deal(BaseModel):
     amount: str = "未披露"
     valuation: Optional[str] = "未披露"
     investors: str = ""
-    business: str = ""  # v7: 一句话业务描述
+    business: str = ""  # v1: 一句话业务描述
     region: str = ""
     region_class: Literal["国内", "海外", "未知"] = "未知"
     detail: str = ""

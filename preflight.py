@@ -1,5 +1,5 @@
 """
-VC 管线预检脚本 (v7)
+VC 管线预检脚本 (v1)
 每次运行管线前执行，检查所有依赖服务状态：
 1. wewe-rss 容器 + 微信登录状态
 2. 搜索 API 连通性 (Bocha/Exa/Kimi)
@@ -200,7 +200,7 @@ def check_llm_api() -> bool:
 
 
 def check_werss_articles(start: datetime, end: datetime) -> dict:
-    """检查 wewe-rss 中窗口内文章数量。v7: 带 JWT 认证。"""
+    """检查 wewe-rss 中窗口内文章数量。v1: 带 JWT 认证。"""
     # 先获取 token
     token = None
     try:

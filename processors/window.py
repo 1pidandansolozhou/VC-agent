@@ -17,7 +17,7 @@ def get_window(since: str | None = None, until: str | None = None) -> tuple[date
         except Exception:
             start = now - timedelta(days=4)
     else:
-        # v7: 默认前4天（今天+前3天）
+        # v1: 默认前4天（今天+前3天）
         start = now - timedelta(days=4)
 
     end = datetime.fromisoformat(until) if until else now

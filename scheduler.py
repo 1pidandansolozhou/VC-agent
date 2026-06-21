@@ -1,5 +1,5 @@
 """
-v6：从 .evn 读取调度配置。默认周三/周日 12:00（Asia/Shanghai）。
+v1：从 .evn 读取调度配置。默认周三/周日 12:00（Asia/Shanghai）。
 """
 
 import os

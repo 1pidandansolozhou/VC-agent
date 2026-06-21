@@ -1,5 +1,5 @@
 """
-VC 一级市场项目雷达 · v6 四阶段流水线
+VC 一级市场项目雷达 · v1 四阶段流水线
 
 阶段：
   1. stage1_capture  — 并行捕获（RSS + Kimi + Bing浏览器 + 手动链接）
@@ -117,7 +117,7 @@ def stage1_capture(start: datetime, end: datetime) -> list:
 
     arts += collect_xhs()  # 桩，默认 []
 
-    # ★ v7: 时间预过滤 — 只保留窗口内的文章（published_at 为 None 的保留，交给后续判断）
+    # ★ v1: 时间预过滤 — 只保留窗口内的文章（published_at 为 None 的保留，交给后续判断）
     in_window_arts = []
     stale_count = 0
     for a in arts:
@@ -254,7 +254,7 @@ def run(since=None, until=None, dry=False, no_enrich=False, max_articles=None):
     dr = f"{start.year}.{start.month}.{start.day} — {end.month}.{end.day}"
 
     _log(f"{'='*50}")
-    _log(f"  VC 雷达 v6 运行开始 | 窗口 {win}")
+    _log(f"  VC 雷达 v1 运行开始 | 窗口 {win}")
     _log(f"{'='*50}")
 
     # 本地源检查

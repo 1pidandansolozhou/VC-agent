@@ -1,5 +1,5 @@
 """
-★ v6 拆出：Kimi 联网搜索采集模块。
+★ v1 拆出：Kimi 联网搜索采集模块。
 
 从 kimi_search_collector.py 拆出独立模块：
 - collect_kimi() — 第一轮用全部赛道感知关键词

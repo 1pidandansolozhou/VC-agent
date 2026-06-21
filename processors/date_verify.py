@@ -6,7 +6,7 @@ from config.settings import DB_PATH, ENABLE_DATE_VERIFY, VERIFY_SCOPE
 from llm.client import chat
 from models.schema import Deal
 
-# ★ v6：哪些 source_type 需要反查（VERIFY_SCOPE=risky 时只查这些）
+# ★ v1：哪些 source_type 需要反查（VERIFY_SCOPE=risky 时只查这些）
 _RISKY_SOURCE_TYPES = {"search", "web", "manual"}
 
 SYS = """你是 VC 投研事实核查员。给定项目名、轮次和若干搜索摘要，判断该项目【本轮融资】最早/最权威的公布日期与金额。
@@ -51,7 +51,7 @@ def _cache(name: str):
 
 def _should_verify(d: Deal) -> bool:
     """根据 VERIFY_SCOPE 判断是否需要对当前 Deal 做反查。
-    v7: RSS/wechat 源也做基本日期核查（非反查），确保时间窗口正确。"""
+    v1: RSS/wechat 源也做基本日期核查（非反查），确保时间窗口正确。"""
     if VERIFY_SCOPE == "all":
         return True
     # risky：只对非 RSS/wechat 源反查
@@ -84,7 +84,7 @@ def verify(d: Deal, start: datetime, end: datetime) -> Deal:
         return d
 
     if not _should_verify(d):
-        # v7: 可信源（RSS/wechat）用 source_date 做基本时间核查，不再盲目信任
+        # v1: 可信源（RSS/wechat）用 source_date 做基本时间核查，不再盲目信任
         status = _check_source_date(d, start, end)
         d.date_status = status
         d.date_confidence = "high" if status == "in_window" else "mid"

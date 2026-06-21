@@ -27,7 +27,7 @@ def conn(db: str = DB_PATH):
     Path(db).parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(db)
     c.execute(DDL)
-    # v7 迁移：旧表可能缺少 business 列
+    # v1 迁移：旧表可能缺少 business 列
     cols = [r[1] for r in c.execute("PRAGMA table_info(deals)").fetchall()]
     if "business" not in cols:
         c.execute("ALTER TABLE deals ADD COLUMN business TEXT DEFAULT ''")

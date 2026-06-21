@@ -1,8 +1,8 @@
 """
-wewe-rss 公众号采集器（v7）
+wewe-rss 公众号采集器（v1）
 通过 wewe-rss HTTP API 按公众号逐号采集，跳过 RSS page_size 限制。
 支持分页（limit=100 + offset）和时间窗口过滤。
-v7: 添加 JWT 认证以正确获取全部公众号列表。
+v1: 添加 JWT 认证以正确获取全部公众号列表。
 """
 
 import re
@@ -78,7 +78,7 @@ def collect_werss(start: datetime, end: datetime) -> List[Article]:
 
 
 def _get_feeds() -> List[tuple]:
-    """从 wewe-rss JSON API 获取所有活跃公众号 (id, name)。v7: 带 JWT 认证。"""
+    """从 wewe-rss JSON API 获取所有活跃公众号 (id, name)。v1: 带 JWT 认证。"""
     token = _get_token()
 
     # 优先使用 JSON API（/mps）带认证

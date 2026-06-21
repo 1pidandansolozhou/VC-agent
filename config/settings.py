@@ -3,7 +3,7 @@ from pathlib import Path
 
 TZ = "Asia/Shanghai"
 TIMEZONE = TZ
-WINDOW_DAYS_DEFAULT = 4  # v7: 默认前4天（今天+前3天）
+WINDOW_DAYS_DEFAULT = 4  # v1: 默认前4天（今天+前3天）
 
 DATA_DIR = Path("data")
 DB_PATH = os.getenv("VC_DB_PATH", str(DATA_DIR / "vc.sqlite"))
@@ -45,17 +45,17 @@ WEB_CRAWL_TIMEOUT = int(os.getenv("WEB_CRAWL_TIMEOUT", "30"))
 ENABLE_DATE_VERIFY = os.getenv("ENABLE_DATE_VERIFY", "true").lower() == "true"
 VERIFY_SCOPE = os.getenv("VERIFY_SCOPE", "risky")  # risky|all — 只对 search/web/manual 源反查
 
-# ★ v6 新增 — 数量检查
+# ★ v1 新增 — 数量检查
 MIN_DEALS_TOTAL = int(os.getenv("MIN_DEALS_TOTAL", "20"))
 MIN_DEALS_CN = int(os.getenv("MIN_DEALS_CN", "5"))
 MIN_DEALS_GLOBAL = int(os.getenv("MIN_DEALS_GLOBAL", "5"))
 MAX_SEARCH_RETRIES = int(os.getenv("MAX_SEARCH_RETRIES", "1"))
 
-# ★ v6 新增 — 浏览器搜索词数限制
+# ★ v1 新增 — 浏览器搜索词数限制
 BROWSER_SEARCH_MAX_CN = int(os.getenv("BROWSER_SEARCH_MAX_CN", "8"))
 BROWSER_SEARCH_MAX_EN = int(os.getenv("BROWSER_SEARCH_MAX_EN", "8"))
 
-# ★ v6 新增 — 回源补全上限
+# ★ v1 新增 — 回源补全上限
 WEB_CRAWL_MAX = int(os.getenv("WEB_CRAWL_MAX", "40"))
 
 # 预留开关

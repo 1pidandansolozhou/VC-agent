@@ -202,7 +202,7 @@ async def _enrich(arts: List[Article]) -> None:
     urls_to_enrich = [
         a for a in arts
         if len(a.content) < 200 and a.url and not _is_wechat_url(a.url)
-    ][:WEB_CRAWL_MAX]  # v6：限制回源上限
+    ][:WEB_CRAWL_MAX]  # v1：限制回源上限
     if not urls_to_enrich:
         return
 
@@ -230,5 +230,5 @@ def enrich_fulltext(arts: List[Article]) -> None:
         asyncio.run(_enrich(arts))
 
 
-# 注意：v6 不再使用固定种子页 / 搜索结果深抓（已替换为 browser_search.py 的 Bing 关键词搜索）。
+# 注意：v1 不再使用固定种子页 / 搜索结果深抓（已替换为 browser_search.py 的 Bing 关键词搜索）。
 # 保留 crawl_urls() 供手动补漏链接使用。
