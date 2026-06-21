@@ -1,0 +1,57 @@
+# 敏感配置
+.env
+.env.*
+
+# 数据库 & 缓存
+data/
+*.sqlite
+*.sqlite3
+*.db
+__pycache__/
+*.pyc
+*.pyo
+
+# 输出文件
+output/
+*.xlsx
+*.docx
+*.pdf
+
+# 临时文件
+temp/
+tmp/
+*.tmp
+*.log
+logs/
+
+# 爬虫缓存
+.crawler_cache/
+*.pkl
+*.pickle
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+docker-compose.override.yml
+
+# Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 检查脚本
+_check_db.py
+
+# Claude 配置
+.claude/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

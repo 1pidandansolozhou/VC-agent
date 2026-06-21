@@ -1,0 +1,16 @@
+services:
+  rsshub:
+    image: diygod/rsshub:latest
+    ports:
+      - "1200:1200"
+    environment:
+      - NODE_ENV=production
+      - CACHE_TYPE=memory
+    restart: unless-stopped
+
+  # 微信公众号助手 we-mp-rss 由用户已自建（端口 8001），此处不接管，仅作为参考保留
+  # we-mp-rss:
+  #   image: rachelos/we-mp-rss:latest
+  #   ports:
+  #     - "8001:8001"
+  #   restart: unless-stopped
