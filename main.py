@@ -49,6 +49,7 @@ from processors import (
     pregate,
 )
 from processors.dedup import dedup, reset_seen
+from processors.preflight import ensure_services_ready
 from processors.window import get_window, mark_done
 from storage import db
 from storage.paths import log_path, weekly_paths
@@ -316,9 +317,9 @@ def run(since=None, until=None, dry=False, no_enrich=False, max_articles=None):
     # ★ v1：每次运行清空去重历史，防止跨运行误去重
     reset_seen()
 
-    # 本地源检查
-    _log("[0/5] 本地源状态检查...")
-    _log_sources()
+    # ★ v1：启动预热 — 确保 Docker 服务就绪 + RSS 数据刷新
+    _log("[0/5] 服务预热检查：等待 RSSHub / wewe-rss 就绪并刷新数据...")
+    ensure_services_ready(start, end)
 
     # Stage 1：三路并行采集
     arts = stage1_capture(start, end)
