@@ -42,12 +42,23 @@ def _pass_gate(a: Article) -> bool:
     return True
 
 
+# ★ v1 修复：RSS/公众号是可信源，其窗口内文章不再经过关键词预过滤，
+# 直接全部进 LLM 抽取。只有搜索/浏览器/手动链接才需要预过滤砍噪音。
+_TRUSTED_SOURCE_TYPES = {"rss", "wechat"}
+
+
 def pre_gate(arts: List[Article]) -> List[Article]:
-    """预过滤：只保留含融资信号词的文章。"""
+    """预过滤：RSS/公众号源全部保留；搜索/web/manual 源只保留含融资信号词的。"""
     before = len(arts)
-    out = [a for a in arts if a.title and _pass_gate(a)]
+    trusted = [a for a in arts if a.source_type in _TRUSTED_SOURCE_TYPES and a.title]
+    untrusted = [a for a in arts if a.source_type not in _TRUSTED_SOURCE_TYPES]
+    untrusted_passed = [a for a in untrusted if a.title and _pass_gate(a)]
+    out = trusted + untrusted_passed
     after = len(out)
     if before > 0:
         from loguru import logger
-        logger.info(f"[pregate] {before} → {after}（砍掉 {before - after}，{100 - after*100//before}%）")
+        logger.info(
+            f"[pregate] {before} → {after}（RSS/公众号保留 {len(trusted)} 篇全量，"
+            f"搜索源 {len(untrusted)}→{len(untrusted_passed)}）"
+        )
     return out

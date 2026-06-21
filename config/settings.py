@@ -45,10 +45,10 @@ WEB_CRAWL_TIMEOUT = int(os.getenv("WEB_CRAWL_TIMEOUT", "30"))
 ENABLE_DATE_VERIFY = os.getenv("ENABLE_DATE_VERIFY", "true").lower() == "true"
 VERIFY_SCOPE = os.getenv("VERIFY_SCOPE", "risky")  # risky|all — 只对 search/web/manual 源反查
 
-# ★ v1 新增 — 数量检查
-MIN_DEALS_TOTAL = int(os.getenv("MIN_DEALS_TOTAL", "20"))
-MIN_DEALS_CN = int(os.getenv("MIN_DEALS_CN", "5"))
-MIN_DEALS_GLOBAL = int(os.getenv("MIN_DEALS_GLOBAL", "5"))
+# ★ v1 数量检查 — 门槛降低，RSS 优先
+MIN_DEALS_TOTAL = int(os.getenv("MIN_DEALS_TOTAL", "5"))
+MIN_DEALS_CN = int(os.getenv("MIN_DEALS_CN", "1"))
+MIN_DEALS_GLOBAL = int(os.getenv("MIN_DEALS_GLOBAL", "1"))
 MAX_SEARCH_RETRIES = int(os.getenv("MAX_SEARCH_RETRIES", "1"))
 
 # ★ v1 新增 — 浏览器搜索词数限制

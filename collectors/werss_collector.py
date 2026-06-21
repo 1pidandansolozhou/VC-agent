@@ -5,6 +5,7 @@ wewe-rss 公众号采集器（v1）
 v1: 添加 JWT 认证以正确获取全部公众号列表。
 """
 
+import html as html_mod
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -232,10 +233,10 @@ def _parse_rss_items(xml_text: str) -> List[dict]:
             return None
 
         items.append({
-            "title": _extract("title"),
-            "link": _extract("link"),
-            "description": _extract("description"),
-            "content": _extract("content:encoded") or _extract("content"),
+            "title": html_mod.unescape(_extract("title")),
+            "link": html_mod.unescape(_extract("link")),
+            "description": html_mod.unescape(_extract("description")),
+            "content": html_mod.unescape(_extract("content:encoded") or _extract("content")),
             "updated": _extract_ts("pubDate") or _extract_ts("updated") or _extract_ts("date"),
         })
     return items
