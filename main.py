@@ -48,7 +48,7 @@ from processors import (
     merge,
     pregate,
 )
-from processors.dedup import dedup, reset_seen
+from processors.dedup import dedup, reset_seen, dedup_against_db
 from processors.preflight import ensure_services_ready
 from processors.window import get_window, mark_done
 from storage import db
@@ -326,6 +326,13 @@ def run(since=None, until=None, dry=False, no_enrich=False, max_articles=None):
 
     # Stage 2：LLM 抽取 + 时间筛选
     deals = stage2_extract(arts, start, end)
+
+    # ★ 数据库去重：跳过已入库项目，防止重复采集
+    before_db_dedup = len([d for d in deals if d.date_status != "stale"])
+    deals = dedup_against_db(deals)
+    after_db_dedup = len([d for d in deals if d.date_status != "stale"])
+    if before_db_dedup != after_db_dedup:
+        _log(f"  数据库去重：{before_db_dedup} → {after_db_dedup} 个新项目")
 
     # Round 2：信息补全
     if not no_enrich:

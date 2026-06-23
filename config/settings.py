@@ -3,7 +3,7 @@ from pathlib import Path
 
 TZ = "Asia/Shanghai"
 TIMEZONE = TZ
-WINDOW_DAYS_DEFAULT = 4  # v1: 默认前4天（今天+前3天）
+WINDOW_DAYS_DEFAULT = 2  # 每天17:00运行，窗口=今天+昨天
 
 DATA_DIR = Path("data")
 DB_PATH = os.getenv("VC_DB_PATH", str(DATA_DIR / "vc.sqlite"))

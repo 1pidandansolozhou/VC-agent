@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 
 from config.settings import DB_PATH
-from models.schema import Article
+from models.schema import Article, Deal
 
 
 def _fp(a: Article) -> str:
@@ -49,3 +49,32 @@ def reset_seen(db: str = DB_PATH) -> None:
     conn.execute("DELETE FROM seen")
     conn.commit()
     conn.close()
+
+
+def dedup_against_db(deals: List[Deal], db: str = DB_PATH) -> List[Deal]:
+    """
+    检查 Deal 项目名是否已存在于 SQLite 数据库中，过滤掉已有项目。
+    防止每次运行重复采集同个项目。
+    """
+    conn = sqlite3.connect(db)
+    existing = set()
+    try:
+        rows = conn.execute("SELECT project_name FROM deals").fetchall()
+        existing = {r[0] for r in rows}
+    except Exception:
+        pass
+    conn.close()
+
+    new_deals = []
+    skipped = []
+    for d in deals:
+        if d.project_name.strip() in existing:
+            skipped.append(d.project_name)
+        else:
+            new_deals.append(d)
+
+    if skipped:
+        from loguru import logger
+        logger.info(f"[dedup_against_db] 跳过 {len(skipped)} 个已入库项目: {skipped}")
+
+    return new_deals
