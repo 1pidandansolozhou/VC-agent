@@ -69,6 +69,13 @@ def _extract_one(a: Article) -> List[Deal]:
             continue
         if it.get("track") in ALLOWED and it.get("sub_tag") not in ALLOWED[it["track"]]:
             it["sub_tag"] = list(ALLOWED[it["track"]])[0]
+        # ★ v2 修复：LLM 返回的 track 可能不在 Track Literal 中，容错映射
+        if it.get("track") not in ALLOWED:
+            from loguru import logger
+            raw_track = it.get("track", "?")
+            logger.warning(f"[extractor] 无效 track='{raw_track}' for {it.get('project_name','?')}，降为 前沿科技")
+            it["track"] = "前沿科技"
+            it["sub_tag"] = list(ALLOWED["前沿科技"])[0]
         if not it.get("region_class") or it.get("region_class") == "未知":
             if a.region_hint != "未知":
                 it["region_class"] = a.region_hint
@@ -87,6 +94,10 @@ def _extract_one(a: Article) -> List[Deal]:
         # team: list → "A；B；C"（LLM 有时返回数组）
         if isinstance(it.get("team"), list):
             it["team"] = "；".join(it["team"])
+        # ★ v2: None → "" 防护（LLM 常返回 null 给 optional 字段）
+        for nil_field in ("official_site", "founded_year", "valuation"):
+            if it.get(nil_field) is None:
+                it[nil_field] = ""
 
         try:
             out.append(
@@ -100,6 +111,7 @@ def _extract_one(a: Article) -> List[Deal]:
         except Exception as e:
             from loguru import logger
             logger.warning(f"[extractor] Deal 构造失败 {it.get('project_name', '?')}: {e}")
+            logger.warning(f"  → track={it.get('track')} round={it.get('round')} region_class={it.get('region_class')} importance={it.get('importance')}")
             continue
     return out
 

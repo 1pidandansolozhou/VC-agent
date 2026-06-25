@@ -90,8 +90,6 @@ def main() -> int:
         "DEEPSEEK_API_KEY": "LLM 抽取/核查",
         "MOONSHOT_API_KEY": "周报文笔/Kimi 搜索",
         "TAVILY_API_KEY": "海外搜索兜底",
-        "EXA_API_KEY": "中英文搜索兜底",
-        "BOCHA_API_KEY": "国内中文搜索兜底",
     }
     for k, desc in keys.items():
         if os.getenv(k):

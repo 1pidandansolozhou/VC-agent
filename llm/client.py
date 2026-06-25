@@ -25,7 +25,7 @@ TASK_MODEL = {
     "verify": ("deepseek", "deepseek-v4-flash"),    # 反向核查
     "audit": ("deepseek", "deepseek-v4-flash"),     # 补漏覆盖检查
     "enrich": ("deepseek", "deepseek-v4-flash"),   # 第二轮信息补全（v1 新增）
-    "write": ("kimi", "kimi-k2.6"),                 # 中文周报文笔
+    "write": ("deepseek", "deepseek-v4-pro"),       # 中文周报文笔（Kimi欠费已切换）
     # GPT 备用路由（质量更高，成本也高，适合疑难场景）
     "extract_gpt": ("openai", "gpt-4o-mini"),
     "verify_gpt": ("openai", "gpt-4o-mini"),

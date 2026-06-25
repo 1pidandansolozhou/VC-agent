@@ -80,7 +80,7 @@ def main():
 
     # API Keys
     print("\n【API Key】")
-    for k in ["DEEPSEEK_API_KEY", "MOONSHOT_API_KEY", "TAVILY_API_KEY", "EXA_API_KEY", "BOCHA_API_KEY"]:
+    for k in ["DEEPSEEK_API_KEY", "MOONSHOT_API_KEY", "TAVILY_API_KEY"]:
         ok = bool(os.getenv(k))
         checks.append(ok)
         print(f"  {'✅' if ok else '❌'} {k}")

@@ -53,14 +53,17 @@ def reset_seen(db: str = DB_PATH) -> None:
 
 def dedup_against_db(deals: List[Deal], db: str = DB_PATH) -> List[Deal]:
     """
-    检查 Deal 项目名是否已存在于 SQLite 数据库中，过滤掉已有项目。
-    防止每次运行重复采集同个项目。
+    检查 Deal 是否已存在于 SQLite 数据库中。
+
+    ★ v2: 改为按 (项目名 + source_url) 去重，而非仅按项目名。
+    仅跳过「完全相同的 URL 已入库」的项目，允许同项目不同来源的文章重复采集。
+    这样每周报告能看到所有窗口内项目，不会因上轮已入库而丢失。
     """
     conn = sqlite3.connect(db)
     existing = set()
     try:
-        rows = conn.execute("SELECT project_name FROM deals").fetchall()
-        existing = {r[0] for r in rows}
+        rows = conn.execute("SELECT project_name, source_url FROM deals").fetchall()
+        existing = {(r[0], r[1]) for r in rows}
     except Exception:
         pass
     conn.close()
@@ -68,7 +71,8 @@ def dedup_against_db(deals: List[Deal], db: str = DB_PATH) -> List[Deal]:
     new_deals = []
     skipped = []
     for d in deals:
-        if d.project_name.strip() in existing:
+        key = (d.project_name.strip(), d.source_url.strip())
+        if key in existing:
             skipped.append(d.project_name)
         else:
             new_deals.append(d)

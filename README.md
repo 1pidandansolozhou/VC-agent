@@ -1,184 +1,186 @@
-# VC 监控agent v1
+# VC 监控agent v2.2
 
-基于 LLM 的 AI 一级市场融资雷达：四阶段流水线自动抓取海内外早期融资项目，
-输出 Excel + Word 周报，并支持 Streamlit 看板。
+基于 LLM 的 AI 一级市场融资雷达：wewe-rss 单源采集 + 智能补全 + 每日自动运行，
+输出 Excel + Word 周报。
 
-## 架构概览（v1 四阶段流水线）
+## 架构概览（v2.2 四步管线）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  ROUND-1（五路并行采集）                                      │
-│  ├ RSS (RSSHub CN + 海外直连)                                │
-│  ├ 微信公众号 (wewe-rss JWT → SQLite 时间窗口过滤)             │
-│  ├ Kimi 联网搜索 (赛道感知 CN+EN 关键词)                       │
-│  ├ 浏览器 Bing 搜索 (Crawl4AI + Playwright)                   │
-│  └ 手动补漏链接 (data/manual_links.txt)                       │
-│       ↓ 时间预过滤（窗口外旧文剔除）                             │
-├─────────────────────────────────────────────────────────────┤
-│  STAGE-2（预过滤 + 去重 + LLM 抽取 + 时间核查）                 │
-│  ├ 关键词预过滤门（砍 50-70% 不必要调用）                       │
-│  ├ 指纹去重                                                   │
-│  ├ 并发 LLM 抽取 (DeepSeek-V4-Flash × 6 workers)              │
-│  ├ 跨源合并                                                   │
-│  └ 时间核查（Kimi 反查每项目融资公布日，stale 剔出周报）         │
-│       ↓ in_window 项目                                        │
-├─────────────────────────────────────────────────────────────┤
-│  ROUND-2（信息补全）                                           │
-│  ├ 5 路定向搜索：融资细节/团队/投资方/业务/英文备选              │
-│  ├ Bocha/Exa 优先（Tavily 备用）                               │
-│  ├ Web Fetch 兜底（搜不到时直抓项目 URL）                       │
-│  └ LLM 补全 amount/valuation/investors/team/business/site     │
+│  [0/3] 预热（Preflight v2.1）                                 │
+│  ├ Docker Desktop 自启 + wewe-rss 容器自启（start 不 restart）  │
+│  ├ 微信扫码登录（90s 超时）                                    │
+│  ├ ★ 数据新鲜度检测 → 滞后则全量刷新 → 轮询等数据到位（5min）    │
+│  └ 窗口内文章数验证                                           │
 │       ↓                                                       │
 ├─────────────────────────────────────────────────────────────┤
-│  STAGE-3（数量检查 + 补搜）                                    │
-│  ├ 总数<20 / 国内<5 / 海外<5 → 触发定向补搜（最多1次）          │
-│  ├ 补搜源：Kimi + 浏览器Bing + 搜索API (Bocha/Exa)             │
-│  └ 对补搜结果重走 STAGE-2                                      │
-│       ↓ 最终 in_window 项目列表                                │
+│  [1/3] 采集 — wewe-rss 全量（~53个VC公众号）                   │
+│  ├ JSON API 分页（limit=100）                                 │
+│  ├ 客户端时间窗口过滤（前一天 00:00 → 当天 23:59）              │
+│  └ 连续3页全过期 → 停止分页                                    │
+│       ↓                                                       │
 ├─────────────────────────────────────────────────────────────┤
-│  输出                                                         │
-│  ├ SQLite upsert (26 列，含 business 业务简介)                  │
-│  ├ 周报 Excel (5 赛道 sheet，11 列)                            │
-│  ├ 周报 Word (按赛道分组)                                      │
-│  └ 总库 Excel (全量历史项目)                                   │
+│  [2/3] 抽取 — LLM 集中抽取                                    │
+│  ├ 指纹去重（标题+URL MD5）                                    │
+│  ├ DeepSeek-V4-Flash 并发抽取（6 workers）                     │
+│  └ 同名合并 → 公众号源全部信任（date_status=in_window）         │
+│       ↓                                                       │
+├─────────────────────────────────────────────────────────────┤
+│  [2.5/3] ★ 智能补全（仅信息不足项目）                          │
+│  ├ 充分性检查: amount/valuation/investors/team/business/       │
+│  │              official_site/detail(<80字触发)               │
+│  ├ 充足 → 跳过                                                │
+│  └ 不足 → Kimi 联网搜索 → DuckDuckGo/Bing 浏览器兜底          │
+│          → DeepSeek 结构化提取 → 填充缺失字段                  │
+│       ↓                                                       │
+├─────────────────────────────────────────────────────────────┤
+│  [3/3] 输出                                                   │
+│  ├ SQLite upsert（26 列）                                     │
+│  ├ 周报 Excel（5 赛道 sheet，11 列）                           │
+│  ├ 周报 Word（按赛道分组 + DeepSeek AI 摘要）                   │
+│  └ 总库 Excel（全量历史项目）                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## 快速开始
 
-### 环境初始化
+### 前置条件
 
-```bash
-python scripts/setup_env.py       # 安装依赖 + 浏览器 + 检查服务
-python scripts/check_env.py       # 环境自检
-```
-
-### 预检
-
-```bash
-python preflight.py --since 2026-06-17 --until 2026-06-21
-# 检查：wewe-rss 容器 + 微信登录 + 搜索API + LLM + 窗口内文章数
-```
+- Docker Desktop（wewe-rss 容器）
+- Python 3.13 + Conda
+- DeepSeek API Key（LLM 抽取/摘要）
+- Moonshot/Kimi API Key（联网搜索补全）
 
 ### 运行
 
 ```bash
-python main.py --dry-run                          # 预览命中项目（推荐先跑）
-python main.py                                     # 完整运行 → 桌面/VC雷达/
-python main.py --since 2026-06-17 --no-enrich      # 跳过信息补全
-python main.py --max-articles 10                   # 每源最多 10 条
+python main.py                    # 日常运行（昨天+今天）
+python main.py --since 2026-06-20 # 补抓指定日期起
+python main.py --dry-run          # 预览不写入
 ```
 
-### 定时与看板
+### 定时调度
 
 ```bash
-python scheduler.py           # 定时运行（默认周三&周日 12:00）
-streamlit run dashboard.py    # 本地看板
+python scheduler.py    # 每日 12:00 自动运行
 ```
 
 ## 服务依赖
 
 | 服务 | 用途 | 启动方式 |
 |------|------|----------|
-| wewe-rss (localhost:8001) | 微信公众号文章 | `docker start we-mp-rss` |
-| RSSHub (localhost:1200) | 36氪/创业邦/量子位 RSS | `docker-compose up -d rsshub` |
-| Playwright Chromium | 浏览器 Bing 搜索 | `python -m playwright install chromium` |
+| wewe-rss (localhost:8001) | 微信公众号文章（唯一数据源） | preflight 自动 `docker start` |
+| Docker Desktop | 运行 wewe-rss 容器 | preflight 自动启动 |
 
 ## API Key 配置（`.env`）
 
 ```bash
-DEEPSEEK_API_KEY=...     # LLM 抽取/反查/补全（主力）
-MOONSHOT_API_KEY=...     # Kimi 联网搜索 + 周报文笔
-BOCHA_API_KEY=...        # 国内中文搜索（强烈建议）
-EXA_API_KEY=...          # 中英文搜索兜底（强烈建议）
-TAVILY_API_KEY=...       # 海外搜索备用（dev key 有限流）
+DEEPSEEK_API_KEY=...     # LLM 抽取/摘要（主力）
+MOONSHOT_API_KEY=...     # Kimi 联网搜索（智能补全）
+OPENAI_API_KEY=...       # GPT 备用路由（可选）
 ```
 
 ## 数据来源
 
 | 来源 | 覆盖 | 说明 |
 |------|------|------|
-| wewe-rss 微信公众号 | 国内 VC 媒体 | JWT 认证，从容器 SQLite 直接读取 |
-| RSSHub | 36氪/创业邦/量子位 | localhost:1200 |
-| 海外 RSS | TechCrunch/Crunchbase/VentureBeat 等 | 直连 |
-| Kimi 联网搜索 | 中英文赛道关键词 | Moonshot API，¥0.03/次 |
-| 浏览器 Bing | CN + EN 赛道关键词 | Crawl4AI + Playwright |
-| Bocha/Exa 搜索 | 信息补全 + 补搜 | Bocha 国内优先，Exa 海外优先 |
-| 手动链接 | data/manual_links.txt | 每行一个 URL |
+| wewe-rss 微信公众号 | ~53 个 VC 公众号 | 唯一数据源，JWT 认证 JSON API |
+| Kimi 联网搜索 | 智能补全 | 仅对信息不足项目触发 |
+| DuckDuckGo/Bing | 搜索兜底 | Kimi 无结果时自动降级 |
 
-## v1 关键特性
+## v2.2 关键特性
 
 | 特性 | 说明 |
 |------|------|
-| ★ 四阶段闭环 | ROUND-1 → STAGE-2 → ROUND-2 → STAGE-3，数量不足自动补搜 |
-| ★ 赛道感知搜索 | 5 大赛道（AI2C/AI2B/具身/前沿科技/ai4S）专属中英关键词 |
-| ★ wewe-rss JWT 认证 | 稳定跨 Docker 重启，预检 + 管线均走 Bearer token |
-| ★ 时间预过滤 | ROUND-1 末尾按窗口剔除旧文，减少后续无效 LLM 调用 |
-| ★ 业务简介字段 | Deal 模型含 business，Excel 11 列含"业务简介" |
-| ★ 5 路定向补全 | 融资细节/团队/投资方/业务/英文 - Bocha/Exa 优先 |
-| ★ 关键词预过滤门 | LLM 抽取前正则砍 50-70% 无关文章 |
-| ★ 数量检查 | 总数<20/国内<5/海外<5 触发定向补搜 |
+| ★ 每日运行 | 每天执行，窗口=前一天00:00→当天23:59 |
+| ★ Docker 自启 | preflight 自动启动 Docker Desktop + wewe-rss 容器 |
+| ★ 数据新鲜度检测 | 检查最新文章日期 → 滞后则刷新 → 轮询等待数据到位 |
+| ★ 微信 session 保护 | docker start（不 restart），避免微信掉线 |
+| ★ 智能补全 | 信息不足项目自动 Kimi 联网搜索 + 浏览器兜底 |
+| ★ 浏览器搜索兜底 | DuckDuckGo → Bing 多级降级，无 API key 依赖 |
+| ★ LLM 周报摘要 | DeepSeek-V4-Pro 生成 250-350 字综述 |
+| ★ 窗口对齐整天 | start/end 强制对齐 00:00:00 / 23:59:59 |
 
 ## 项目结构
 
 ```
 VC agent/
-├── main.py              # 主入口（四阶段管线）
-├── preflight.py         # 预检脚本
-├── scheduler.py         # 定时调度
-├── dashboard.py         # Streamlit 看板
+├── main.py                  # 主入口（四步管线）
+├── preflight.py             # 独立预检脚本
+├── scheduler.py             # 定时调度（每日）
+├── dashboard.py             # Streamlit 看板
 ├── config/
-│   ├── settings.py      # 全局配置 + 环境变量
-│   ├── sources.py       # RSS 源 + 赛道关键词 + 搜索词
-│   └── taxonomy.py      # 赛道/tag 分类体系 + sheet 映射
+│   ├── settings.py          # 全局配置
+│   ├── sources.py           # 手动链接配置
+│   └── taxonomy.py          # 赛道/tag 分类体系
 ├── collectors/
-│   ├── werss_collector.py    # 微信公众号（JWT + SQLite）
-│   ├── rss_collector.py      # RSSHub + 海外 RSS
-│   ├── kimi_collector.py     # Kimi 联网搜索
-│   ├── browser_search.py     # 浏览器 Bing 搜索
-│   ├── search_collector.py   # Bocha/Exa/Tavily API 搜索
-│   ├── web_collector.py      # URL 抓取 + 全文回源
-│   ├── kimi_search_collector.py # Kimi 单项目反查
-│   ├── manual.py             # 手动链接读取
-│   └── xhs_collector.py      # 小红书（桩）
+│   ├── werss_collector.py   # ★ 微信公众号采集（JSON API）
+│   ├── kimi_search_collector.py # Kimi 联网搜索
+│   └── ...                  # 其他采集器（v2 已停用，保留不删）
 ├── processors/
-│   ├── pregate.py       # 关键词预过滤门
-│   ├── dedup.py         # 指纹去重
-│   ├── extractor.py     # LLM 并发抽取（Deal 结构化）
-│   ├── merge.py         # 跨源合并
-│   ├── date_verify.py   # 时间核查（Kimi 反查）
-│   ├── enricher.py      # ROUND-2 信息补全（5 路搜索）
-│   ├── coverage_check.py # 数量检查 + 补搜词构造
-│   └── window.py        # 时间窗口管理
+│   ├── preflight.py         # ★ 预热模块（Docker+微信+数据新鲜度）
+│   ├── dedup.py             # 指纹去重
+│   ├── extractor.py         # LLM 并发抽取
+│   ├── merge.py             # 跨源合并
+│   ├── enricher.py          # ★ 智能补全（Kimi搜索+浏览器兜底）
+│   └── window.py            # 时间窗口管理
 ├── exporters/
-│   ├── excel_exporter.py    # 周报 Excel（5 sheet × 11 列）
-│   ├── word_exporter.py     # 周报 Word
+│   ├── excel_exporter.py    # 周报 Excel
+│   ├── word_exporter.py     # 周报 Word（含 AI 摘要）
+│   ├── summary.py           # ★ LLM 周报摘要生成
 │   └── master_exporter.py   # 总库 Excel
 ├── storage/
-│   └── db.py            # SQLite 持久化（26 列 upsert）
+│   └── db.py                # SQLite 持久化
 ├── llm/
-│   └── client.py        # 多 Provider LLM 客户端（DeepSeek/Kimi/OpenAI）
+│   └── client.py            # 多 Provider LLM 客户端
 ├── models/
-│   └── schema.py        # Pydantic 数据模型（Article/Deal）
-├── templates/
-│   └── weekly_template.xlsx  # 周报模板（11 列）
-└── data/
-    └── vc.sqlite         # 持久化数据库
+│   └── schema.py            # Pydantic 数据模型
+├── scripts/
+│   ├── check_articles.py    # 数据库检查
+│   └── refresh_and_check.py # 公众号刷新测试
+├── data/
+│   ├── vc.sqlite            # 持久化数据库
+│   └── state.json           # 运行状态
+└── templates/
+    └── weekly_template.xlsx # 周报模板
 ```
+
+## 版本更新
+
+### v2.2 (2026-06-25)
+- **智能补全**: 信息不足项目自动 Kimi 联网搜索 + DuckDuckGo/Bing 浏览器兜底
+- **充分性判断**: 新增 detail 字段长度检查（<80 字符触发补全）
+- **Kimi → DeepSeek**: 周报摘要从 Kimi(kimi-k2.6) 切换到 DeepSeek(deepseek-v4-pro)，Kimi 专用于联网搜索
+
+### v2.1 (2026-06-25)
+- **窗口修复**: get_window() 对齐到整天边界（昨天 00:00 → 今天 23:59）
+- **数据新鲜度检测**: preflight 检查最新文章日期 → 滞后则刷新 → 轮询等待
+- **容器保护**: docker start 替代 restart，保护微信 session 不丢失
+- **LLM 修复**: write 任务从 Kimi（欠费）切换到 DeepSeek（余额 ¥12.76）
+
+### v2.0 (2026-06-25)
+- **单源简化**: 删除海外 RSS/RSSHub/Bing 搜索/Kimi 搜索/Bocha/Exa/Tavily
+- **仅 wewe-rss**: ~53 个微信公众号为唯一数据源
+- **每日运行**: 调度器改为每天执行
+- **Docker 自启**: preflight 自动管理 Docker Desktop + wewe-rss 容器
+- **微信扫码**: 管线中途弹二维码等用户扫码登录
+
+### v1.0 (2026-06-17)
+- 五路并行采集：RSS + 微信公众号 + Kimi + Bing + 手动链接
+- 四阶段闭环：采集 → 抽取核查 → 补全 → 数量检查补搜
+- Bocha/Exa/Tavily 搜索 API + 浏览器 Bing 搜索
+- Streamlit 看板
 
 ## 常见问题
 
-**Q: 只有海外项目，没有国内？**
-A: 确认 wewe-rss（`docker start we-mp-rss`）和 RSSHub（`docker-compose up -d rsshub`）已启动。运行 `python preflight.py` 检查。
+**Q: 没有抓到我关注的公众号文章？**
+A: 确认 wewe-rss 容器运行中且微信已登录。管线会在 preflight 阶段自动检测数据新鲜度并刷新。
 
-**Q: 浏览器搜索报错？**
-A: 安装 Chromium：`python -m playwright install chromium`。未安装会自动降级。
+**Q: 微信扫码超时了？**
+A: 扫码窗口 90 秒。超时后管线继续用现有数据运行。可在 `http://localhost:8001` 手动登录后重新运行。
+
+**Q: 想关闭智能补全？**
+A: 设置环境变量 `ENABLE_ENRICH=false`，或在 `.env` 中配置。
 
 **Q: 如何人工补漏？**
-A: 编辑 `data/manual_links.txt`，每行一个 URL，下次运行自动抓取。
-
-**Q: 搜索结果不够多？**
-A: STAGE-3 自动触发补搜。可在 `.env` 调整 `MIN_DEALS_TOTAL`/`MIN_DEALS_CN`/`MIN_DEALS_GLOBAL`。
-
-**Q: Excel 列错位了？**
-A: v1 模板已修复为 11 列（含"业务简介"），重新运行即可。如果模板是旧版，删除 `templates/weekly_template.xlsx` 后重新生成。
+A: 编辑 `data/manual_links.txt`，每行一个 URL，或使用 `--since YYYY-MM-DD` 补抓历史数据。

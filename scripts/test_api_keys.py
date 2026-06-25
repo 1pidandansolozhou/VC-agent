@@ -50,48 +50,6 @@ def test_tavily():
         return ("Tavily", False, str(e))
 
 
-def test_exa():
-    try:
-        r = requests.post(
-            "https://api.exa.ai/search",
-            headers={"x-api-key": os.getenv("EXA_API_KEY"), "Content-Type": "application/json"},
-            json={
-                "query": "AI startup funding",
-                "numResults": 2,
-                "type": "auto",
-                "category": "news",
-                "contents": {"text": {"maxCharacters": 300}},
-            },
-            timeout=15,
-        )
-        r.raise_for_status()
-        data = r.json()
-        return ("Exa", True, f"results={len(data.get('results', []))}")
-    except Exception as e:
-        return ("Exa", False, str(e))
-
-
-def test_bocha():
-    try:
-        r = requests.post(
-            "https://api.bocha.cn/v1/web-search",
-            headers={"Authorization": f"Bearer {os.getenv('BOCHA_API_KEY')}", "Content-Type": "application/json"},
-            json={"query": "AI 初创 融资", "count": 2, "summary": True, "freshness": "noLimit"},
-            timeout=15,
-        )
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        d = data.get("data", {})
-        for sec in ("webPages", "news"):
-            s = d.get(sec)
-            if isinstance(s, dict):
-                results.extend(s.get("value", []))
-        return ("Bocha", True, f"results={len(results)}")
-    except Exception as e:
-        return ("Bocha", False, str(e))
-
-
 def main():
     load_dotenv()
 
@@ -99,7 +57,7 @@ def main():
     print("API Key 连通性测试")
     print("=" * 50)
 
-    tests = [test_deepseek, test_moonshot, test_tavily, test_exa, test_bocha]
+    tests = [test_deepseek, test_moonshot, test_tavily]
     results = []
 
     with ThreadPoolExecutor(max_workers=5) as pool:

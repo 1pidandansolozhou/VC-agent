@@ -5,7 +5,7 @@ v1 改进：
 - 5 路定向搜索：融资细节 / 团队 / 投资方 / 业务产品 / 英文备选
 - Web Fetch 兜底：搜索失败时直接抓取项目 URL 原文
 - 更丰富的 LLM 提示词：业务痛点、核心产品、对标竞品
-- Bocha/Exa 优先（Tavily dev key 有 432 限流问题）
+- Kimi 联网 + Tavily 兜底搜索（Bocha/Exa 已废弃）
 """
 
 import json
@@ -62,34 +62,168 @@ def _web_fetch(url: str, timeout: int = 10) -> Optional[str]:
         return None
 
 
+def _browser_search(query: str, max_results: int = 3) -> List[str]:
+    """
+    ★ v2.2: 浏览器搜索兜底（DuckDuckGo Lite，无 API key 依赖）。
+    当 Kimi 联网搜索无结果时自动降级到此处。
+    返回搜索摘要文本列表。
+    """
+    snippets = []
+    try:
+        encoded = requests.utils.quote(query)
+        url = f"https://lite.duckduckgo.com/lite/?q={encoded}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200:
+            logger.debug(f"[enricher] browser_search HTTP {r.status_code}")
+            return []
+
+        # 解析 DuckDuckGo Lite 的简洁 HTML 结果
+        # 格式: <a href="...">title</a><span>snippet</span>
+        html = r.text
+        # 提取所有结果行：每行包含一个链接和可能的摘要
+        links = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>(.+?)</a>', html)
+        # 提取摘要文本（在 <span class="result-snippet"> 或纯文本中）
+        snippets_raw = re.findall(r'<span[^>]*class="[^"]*result-snippet[^"]*"[^>]*>(.+?)</span>', html)
+        # 也尝试提取 <td> 中的纯文本结果
+        if not snippets_raw:
+            snippets_raw = re.findall(r'<td[^>]*class="[^"]*result-snippet[^"]*"[^>]*>(.+?)</td>', html)
+
+        for i, (href, title) in enumerate(links[:max_results]):
+            title_clean = re.sub(r'<[^>]+>', '', title).strip()
+            snippet = re.sub(r'<[^>]+>', '', snippets_raw[i]).strip() if i < len(snippets_raw) else ""
+            if title_clean:
+                snippets.append(f"标题：{title_clean}\n摘要：{snippet}\n链接：{href}")
+
+        logger.debug(f"[enricher] browser_search '{query[:30]}' → {len(snippets)} results")
+    except Exception as e:
+        logger.debug(f"[enricher] browser_search failed for '{query[:30]}': {e}")
+
+    # 如果 DuckDuckGo 也失败，尝试直接抓 Bing
+    if not snippets:
+        try:
+            encoded = requests.utils.quote(query)
+            url = f"https://www.bing.com/search?q={encoded}&setlang=zh-cn"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            r = requests.get(url, headers=headers, timeout=15)
+            text = re.sub(r'<script[^>]*>.*?</script>', '', r.text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<[^>]+>', ' ', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            if len(text) > 200:
+                snippets.append(f"搜索结果摘要：{text[:2500]}")
+            logger.debug(f"[enricher] Bing fallback → {len(text)} chars")
+        except Exception as e:
+            logger.debug(f"[enricher] Bing fallback failed: {e}")
+
+    return snippets
+
+
 def _search_single_query(q: str) -> list:
-    """单条查询：优先 Bocha（国内）→ Exa（海外）→ Tavily（兜底）。"""
+    """单条查询：Kimi 联网 → DuckDuckGo 浏览器兜底。"""
     import os
-    from collectors.search_collector import _bocha_one, _exa_one, _search_one
+    from collectors.kimi_search_collector import collect_kimi_search
 
     results = []
-    # Bocha 优先（中文搜索最强，无 432 问题）
-    if os.getenv("BOCHA_API_KEY"):
+    # Kimi 联网搜索（中文主力）
+    if os.getenv("MOONSHOT_API_KEY"):
         try:
-            results.extend(_bocha_one(q))
+            kimi_results = collect_kimi_search([q])
+            results.extend(kimi_results)
         except Exception as e:
-            logger.debug(f"[enricher] Bocha failed for '{q[:30]}': {e}")
+            logger.debug(f"[enricher] Kimi failed for '{q[:30]}': {e}")
 
-    # Exa 补充（海外信息）
-    if os.getenv("EXA_API_KEY"):
+    # ★ v2.2: DuckDuckGo 浏览器兜底（Kimi 无结果或失败时）
+    if not results:
+        logger.info(f"[enricher] Kimi 无结果，降级到浏览器搜索: '{q[:40]}'")
         try:
-            results.extend(_exa_one(q))
+            snippets = _browser_search(q, max_results=3)
+            if snippets:
+                from models.schema import Article
+                for s in snippets[:3]:
+                    results.append(Article(
+                        title=q,
+                        url="",
+                        content=s,
+                        source="ddg_browser",
+                        source_type="web",
+                    ))
         except Exception as e:
-            logger.debug(f"[enricher] Exa failed for '{q[:30]}': {e}")
-
-    # Tavily 兜底（dev key 容易 432）
-    if os.getenv("TAVILY_API_KEY") and not results:
-        try:
-            results.extend(_search_one(q))
-        except Exception as e:
-            logger.debug(f"[enricher] Tavily failed for '{q[:30]}': {e}")
+            logger.debug(f"[enricher] browser_search failed: {e}")
 
     return results
+
+
+def _safe_json_call(system: str, user: str, project_name: str) -> Optional[dict]:
+    """
+    ★ v2 加固: 多策略 JSON 提取 + 重试。
+    处理 LLM 返回的 markdown 代码块、裸文本中嵌入的 JSON、纯文本等。
+    """
+    raw = ""
+    for attempt in range(2):
+        try:
+            raw = chat(
+                "enrich" if attempt == 0 else "classify",
+                system,
+                user + ("\n\n★ 严格只输出 JSON 对象，不要 markdown 代码块，不要解释。"
+                        if attempt > 0 else ""),
+                max_tokens=600,
+                json_mode=True,
+            )
+        except Exception as e:
+            logger.warning(f"[enricher] {project_name} LLM 调用失败 (attempt {attempt+1}): {e}")
+            continue
+
+        # 策略1: 直接解析
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+
+        # 策略2: 剥离 markdown ```json ... ``` 代码块
+        cleaned = re.sub(r'^```(?:json)?\s*', '', raw.strip(), flags=re.IGNORECASE)
+        cleaned = re.sub(r'\s*```$', '', cleaned, flags=re.IGNORECASE)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+
+        # 策略3: 从文本中提取第一个完整 JSON 对象
+        m = re.search(r'\{[^{}]*\}', raw)
+        if m:
+            try:
+                return json.loads(m.group())
+            except json.JSONDecodeError:
+                pass
+
+        # 策略4: 宽松匹配 — 找最外层的 {...}
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group())
+            except json.JSONDecodeError:
+                pass
+
+        # 如果第一次没成功，重试一次
+        if attempt == 0:
+            logger.debug(f"[enricher] {project_name} JSON 解析失败，重试中... raw[:100]={raw[:100]}")
+            continue
+        else:
+            # 最后兜底：尝试从文本中直接提取 business
+            biz_match = re.search(r'(?:business|业务)[：:]\s*["\']?(.+?)(?:"|\'|$)', raw, re.MULTILINE | re.IGNORECASE)
+            if biz_match:
+                biz = biz_match.group(1).strip()[:100]
+                logger.info(f"[enricher] {project_name} 兜底提取 business = {biz}")
+                return {"business": biz}
+
+            logger.warning(f"[enricher] {project_name} LLM 解析失败，raw[:200]={raw[:200]}")
+            return None
+
+    return None
 
 
 def _search_enrich_queries(d: Deal) -> List[str]:
@@ -103,6 +237,10 @@ def enrich_deal(d: Deal) -> Deal:
     """对单个 Deal 补全缺失字段：多路搜索 + LLM 提取 + Web Fetch 兜底。"""
     missing = [f for f in ("amount", "valuation", "investors", "team", "business", "official_site")
                if not getattr(d, f) or getattr(d, f) in ("", "未披露")]
+    # ★ v2.2: detail 过短也触发补全（说明公众号原文信息不足）
+    if len(getattr(d, "detail", "") or "") < 80:
+        if "business" not in missing:
+            missing.append("business")
     if not missing:
         return d
 
@@ -155,16 +293,14 @@ def enrich_deal(d: Deal) -> Deal:
     if len(snip) < 50:
         return d
 
-    # 4) LLM 提取
+    # 4) LLM 提取（加固 JSON 解析，防 markdown 包裹 / 纯文本返回）
     known = f"项目：{d.project_name} | 轮次：{d.round} | 已知：amount={d.amount}, investors={d.investors}, team={d.team}"
-    try:
-        j = json.loads(chat(
-            "enrich", ENRICH_SYS,
-            f"{known}\n缺失字段：{missing}\n\n搜索摘要（共{len(unique_arts)}条结果）：\n{snip}",
-            max_tokens=600, json_mode=True,
-        ))
-    except Exception:
-        logger.warning(f"[enricher] LLM 解析失败: {d.project_name}")
+    j = _safe_json_call(
+        ENRICH_SYS,
+        f"{known}\n缺失字段：{missing}\n\n搜索摘要（共{len(unique_arts)}条结果）：\n{snip}",
+        d.project_name,
+    )
+    if j is None:
         return d
 
     # 5) 填充字段

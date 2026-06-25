@@ -2,30 +2,33 @@ import json
 from pathlib import Path
 from datetime import datetime, timedelta
 
-from config.settings import STATE_PATH
+from config.settings import STATE_PATH, WINDOW_DAYS_DEFAULT
 
 
 def get_window(since: str | None = None, until: str | None = None) -> tuple[datetime, datetime]:
+    """
+    ★ v2 修复：窗口始终对齐到整天边界。
+
+    默认窗口 = 前一天 00:00:00 → 当天 23:59:59
+    例如：6/25 运行 → 窗口覆盖 6/24 00:00 ~ 6/25 23:59
+
+    --since 可手动扩展起始日（用于补抓缺失数据）。
+    """
     now = datetime.now()
-    state_path = Path(STATE_PATH)
-    from config.settings import WINDOW_DAYS_DEFAULT
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     if since:
-        start = datetime.fromisoformat(since)
-    elif state_path.exists():
-        try:
-            start = datetime.fromisoformat(json.loads(state_path.read_text(encoding="utf-8"))["last_run"])
-        except Exception:
-            start = now - timedelta(days=WINDOW_DAYS_DEFAULT)
+        start = datetime.fromisoformat(since).replace(hour=0, minute=0, second=0, microsecond=0)
     else:
-        start = now - timedelta(days=WINDOW_DAYS_DEFAULT)
+        # 默认：前一天 00:00:00
+        start = today_start - timedelta(days=WINDOW_DAYS_DEFAULT)
 
-    # ★ v1 修复：保证窗口至少覆盖 WINDOW_DAYS 天，防止 state.json 中的 last_run 过近导致窗口缩水
-    min_start = now - timedelta(days=WINDOW_DAYS_DEFAULT)
-    if start > min_start:
-        start = min_start
+    if until:
+        end = datetime.fromisoformat(until).replace(hour=23, minute=59, second=59, microsecond=0)
+    else:
+        # 默认：当天 23:59:59
+        end = now.replace(hour=23, minute=59, second=59, microsecond=0)
 
-    end = datetime.fromisoformat(until) if until else now
     return start, end
 
 
