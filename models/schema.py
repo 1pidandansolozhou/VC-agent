@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Literal, List
 from datetime import datetime
 
-Track = Literal["AI2C", "AI2B", "具身", "ai4S", "前沿科技"]
+Track = Literal["AI2C", "AI2B", "具身", "ai4S", "前沿科技", "商业航天"]
 
 
 class Article(BaseModel):

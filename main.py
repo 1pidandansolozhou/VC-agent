@@ -30,7 +30,7 @@ from exporters.master_exporter import rebuild_master
 from exporters.word_exporter import write_word
 from models.schema import Deal
 from processors import extractor, merge
-from processors.dedup import dedup, reset_seen
+from processors.dedup import dedup, reset_seen, dedup_against_db
 from processors.preflight import ensure_services_ready
 from processors.window import get_window, mark_done
 from storage import db
@@ -81,6 +81,12 @@ def stage2_extract(arts):
     # 合并同名项目
     deals = merge.merge(deals)
     _log(f"  [2/3] 合并后 {len(deals)} 个项目")
+
+    # ★ v3: DB去重 — 跳过已入库项目（Excel导入基线 + 历史管线输出）
+    before = len(deals)
+    deals = dedup_against_db(deals)
+    if before != len(deals):
+        _log(f"  [2/3] DB去重: {before} → {len(deals)} (跳过 {before - len(deals)} 个)")
 
     # 公众号源全部信任 — 直接标 in_window
     for d in deals:

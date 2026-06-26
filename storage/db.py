@@ -120,3 +120,11 @@ def rows_by_window(window_tag: str, db: str = DB_PATH) -> List[dict]:
 
 def all_deals(db: str = DB_PATH) -> List[dict]:
     return all_rows(db)
+
+
+def clear_deals(db: str = DB_PATH):
+    """清空 deals 表所有数据（Excel 全量导入前调用）。"""
+    c = conn(db)
+    c.execute("DELETE FROM deals")
+    c.commit()
+    c.close()
